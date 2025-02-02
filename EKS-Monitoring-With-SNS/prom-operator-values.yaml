@@ -1,0 +1,120 @@
+grafana:
+  adminPassword: "GraFaNa@XYZ-Company"
+  ### Provision grafana-dashboards-kubernetes ###
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'grafana-dashboards-kubernetes'
+        orgId: 1
+        folder: 'Kubernetes'
+        type: file
+        disableDeletion: true
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/grafana-dashboards-kubernetes
+  dashboards:
+    grafana-dashboards-kubernetes:
+      k8s-system-api-server:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-system-api-server.json
+        token: ''
+      k8s-system-coredns:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-system-coredns.json
+        token: ''
+      k8s-views-global:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json
+        token: ''
+      k8s-views-namespaces:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json
+        token: ''
+      k8s-views-nodes:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-nodes.json
+        token: ''
+      k8s-views-pods:
+        url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json
+        token: ''
+  ingress:
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/load-balancer-name: grafana-alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<AWS_REGION>:<ACCOUNT_ID>:certificate/a0ff498e-62fd-4397-b23a-626360465d32
+    enabled: true
+    hosts:
+    - grafana-test.apps.xyz-company.com
+    labels: {}
+    path: /
+
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['job', 'alertname', 'priority']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'sns-receivers'
+    receivers:
+    - name: 'null'  # Add this to your config as well
+    - name: sns-receivers
+      sns_configs:
+        - api_url: https://sns.<AWS_REGION>.amazonaws.com
+          topic_arn: arn:aws:sns:<AWS_REGION>:<ACCOUNT_ID>:alertTopic
+          sigv4:
+            region: <AWS_REGION>
+            role_arn: arn:aws:iam::<ACCOUNT_ID>:role/alertmanager_role
+          subject: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}]'
+          message: |-
+            {{ if gt (len .Alerts.Firing) 0 }}
+            Alerts Firing:
+            {{ template "__text_alert_list_markdown" .Alerts.Firing }}
+            {{ end }}
+            {{ if gt (len .Alerts.Resolved) 0 }}
+            Alerts Resolved:
+            {{ template "__text_alert_list_markdown" .Alerts.Resolved }}
+            {{ end }}
+          send_resolved: true  # Sends notification when alert is resolved
+
+additionalPrometheusRulesMap:
+  custom-rules:
+    groups:
+    - name: customGroupA.rules
+      rules:
+      - alert: Custom-Alert Instance High CPU Utilization
+        annotations:
+          description: CPU usage had been over 75% for 5 minutes | Current usage is {{ $value | printf "%.2f" }}%
+          summary: CPU usage is over 75% (instance {{ $labels.instance }})
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 75
+        for: 5m
+        labels:
+          severity: critical
+      - alert: Custom-Alert Instance High Memory Utilization
+        annotations:
+          description: Memory usage had been over 75% for 5 minutes | Current usage is {{ $value | printf "%.2f" }}%
+          summary: Memory usage is over 75% (instance {{ $labels.instance }})
+        expr: 100 - (sum by(instance) (node_memory_MemAvailable_bytes) / sum by(instance) (node_memory_MemTotal_bytes) * 100) > 75
+        for: 5m
+        labels:
+          severity: critical
+
+#######################################################################################################################                                                                                                              
+## The Prometheus Node Exporters are unable to get metrics from the services which are running on the control plane. ##    
+## Therefore disabling it to avoid unnecessary alerts received through email or slack.                               ##    
+#######################################################################################################################                                                                                                              
+
+## Component scraping the kube controller manager
+##
+kubeControllerManager:
+  enabled: false
+## Component scraping kube scheduler
+##
+kubeScheduler:
+  enabled: false
+## Component scraping kube proxy
+##
+kubeProxy:
+  enabled: false
