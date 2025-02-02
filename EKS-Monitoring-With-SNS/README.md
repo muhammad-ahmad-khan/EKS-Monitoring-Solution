@@ -17,6 +17,5 @@ Using SNS as a receiver simplifies email notifications without requiring an SMTP
 
 ### How to execute the solution?
 
-* See the write up here:
-https://dev.to/muhammad_ahmad_khan/TBD
+* See the write up [here.](https://dev.to/muhammad_ahmad_khan/monitoring-alerting-for-aws-eks-using-grafana-prometheus-alertmanager-with-sns-integration-5593)
 
